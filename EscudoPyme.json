@@ -1,0 +1,217 @@
+{
+  "name": "EscudoPyme",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "has:attachment"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "27f3b8b7-3d5d-4419-b602-e0c4e96c1db9",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "mmZwx2ZmisscBoyE",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "e79cce99-ec56-4a8b-bc49-fabc4091b1c2",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analiza el texto de este PDF. Extrae el RUT del emisor, el Monto Total y la Cuenta Corriente de depósito. Indica si detectas algo sospechoso (ej. el RUT no coincide con el nombre o el lenguaje es de urgencia extrema).\n\nAl final de tu análisis, escribe únicamente la palabra 'VERIFICAR' si encontraste algo sospechoso, o 'SEGURO' si todo parece estar en orden.  {{ $json.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        432,
+        0
+      ],
+      "id": "6120e6ea-e702-4c62-b10f-351cfa2eaf6c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        208
+      ],
+      "id": "a83024f3-671e-4b35-aceb-468f517f4246",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "LHvOPQn6N4njOzhb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea4f8388-a94e-44cc-8ba6-2eeccae340d6",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "VERIFICAR",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        736,
+        0
+      ],
+      "id": "abef01cc-8221-42ff-a52a-fc95ba7e5703",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "7049126046",
+        "text": "=⚠️ ALERTA DE SEGURIDAD (Ley Marco)\\n Se detectó un correo sospechoso.\\n Emisor: {{ $node[\"AI Agent\"].json[\"output\"].emisor }}\\n Riesgo: Alta probabilidad de fraude de factura.\\n Acción sugerida: Verificar RUT antes de realizar transferencias.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        944,
+        -96
+      ],
+      "id": "24f55ec5-3869-499b-b88a-69f0acaba7c8",
+      "name": "Send a text message",
+      "webhookId": "68a63e40-515e-4012-9e1f-8829ff3ef266",
+      "credentials": {
+        "telegramApi": {
+          "id": "qAK6fOdqj1SQJxU4",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "95cc9d64-44f7-4d56-8983-4a7293e3676b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "500d74c34b896290a7d1b931bfb2cd1b87957e80e162b91f4ea2a3e7f31eda7f"
+  },
+  "id": "NnKwD_HrjgkUUeHNmI_A2",
+  "tags": []
+}
