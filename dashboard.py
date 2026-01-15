@@ -2,8 +2,20 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# Al principio de tu archivo, junto a los otros import
+from streamlit_autorefresh import st_autorefresh
+
+# --- FUNCIÓN PARA LIMPIAR CACHÉ ---
+def clear_cache():
+    st.cache_data.clear()
+
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Escudo Pyme - Dashboard", layout="wide")
+
+
+# Botón manual en la barra lateral por si acaso
+if st.sidebar.button("🔄 Forzar Actualización"):
+    clear_cache()
 
 # 1. PEGA TU ENLACE CSV AQUÍ
 # Asegúrate que termine en &output=csv o similar
@@ -77,3 +89,8 @@ else:
     # --- TABLA DETALLADA ---
     st.subheader("📋 Registro Detallado")
     st.dataframe(df.sort_values(by='Fecha', ascending=False) if 'Fecha' in df.columns else df, use_container_width=True)
+
+
+
+# Al final de tu archivo (fuera de cualquier función)
+st_autorefresh(interval=60000, key="datarefresh")
