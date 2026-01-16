@@ -1,96 +1,114 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
-# Al principio de tu archivo, junto a los otros import
 from streamlit_autorefresh import st_autorefresh
 
-# --- FUNCIÓN PARA LIMPIAR CACHÉ ---
-def clear_cache():
-    st.cache_data.clear()
+# --- 1. CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(
+    page_title="Centro de Mando: Escudo Pyme",
+    page_icon="🛡️",
+    layout="wide"
+)
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Escudo Pyme - Dashboard", layout="wide")
+# Refresco automático cada 60 segundos
+st_autorefresh(interval=60000, key="datarefresh")
 
+# --- 2. CARGA DE DATOS ---
+# Reemplaza con tu URL de Google Sheets publicada como CSV
+SHEET_URL = "TU_URL_AQUI"
 
-# Botón manual en la barra lateral por si acaso
-if st.sidebar.button("🔄 Forzar Actualización"):
-    clear_cache()
-
-# 1. PEGA TU ENLACE CSV AQUÍ
-# Asegúrate que termine en &output=csv o similar
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTlSH-jwfLUINNaWhCNb88mAoLjUAlQzkqqZNwLG7tteMQof1yis0bFoieF2FVvOniS0MRIsAGWpXgb/pub?gid=0&single=true&output=csv"
-
-st.title("🛡️ Centro de Mando: Escudo Pyme")
-st.markdown("---")
-
-# --- CARGA DE DATOS CON MANEJO DE ERRORES ---
+@st.cache_data(ttl=10)
 def load_data():
     try:
-        # Leemos el CSV
         df = pd.read_csv(SHEET_URL)
+        # Limpieza básica de columnas
+        df.columns = [c.strip().capitalize() for c in df.columns]
         
-        # Limpieza básica de nombres de columnas (quitar espacios)
-        df.columns = df.columns.str.strip()
+        # Asegurar que las columnas necesarias existan
+        required = ['Fecha', 'Emisor', 'Monto', 'Veredicto', 'Analisis', 'Confianza']
+        for col in required:
+            if col not in df.columns:
+                df[col] = "N/A"
         
-        # Convertir Fecha a formato fecha
-        if 'Fecha' in df.columns:
-            df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-            
-        # Convertir Monto a número (limpiando cualquier texto sobrante)
-        if 'Monto' in df.columns:
-            df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0)
-            
+        # Formatear Monto como número
+        df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0)
         return df
     except Exception as e:
-        st.error(f"❌ Error al conectar con los datos: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# --- VALIDACIÓN DE DATOS ---
+# --- 3. ENCABEZADO Y FILTROS ---
+st.title("🛡️ Centro de Mando: Escudo Pyme")
+st.markdown("---")
+
 if df.empty:
-    st.warning("⚠️ No se encontraron datos. Verifica que el enlace CSV sea correcto y tenga datos.")
-    # Mostramos un ejemplo de cómo debería ser el link
-    st.info("El link debe verse similar a: https://docs.google.com/spreadsheets/d/e/.../pub?output=csv")
-else:
-    # --- MÉTRICAS PRINCIPALES ---
-    col1, col2, col3 = st.columns(3)
-    
-    total_docs = len(df)
-    amenazas = len(df[df['Veredicto'].str.contains('VERIFICAR|RIESGOSO', case=False, na=False)])
-    capital = df[df['Veredicto'].str.contains('VERIFICAR|RIESGOSO', case=False, na=False)]['Monto'].sum()
+    st.warning("⚠️ No se encontraron datos. Verifica que el flujo de n8n haya procesado su primera factura.")
+    st.stop()
 
-    col1.metric("Docs Analizados", total_docs)
-    col2.metric("Amenazas Detectadas", amenazas, delta_color="inverse")
-    col3.metric("Capital Protegido", f"$ {capital:,.0f}".replace(",", "."))
+# --- 4. KPIs PRINCIPALES (Métricas de Valor) ---
+total_analizados = len(df)
+amenazas = len(df[df['Veredicto'].isin(['FRAUDE', 'RIESGOSO'])])
+capital_protegido = df[df['Veredicto'] == 'FRAUDE']['Monto'].sum()
+verificados = len(df[df['Confianza'] == 'ALTA'])
 
-    st.markdown("---")
+col1, col2, col3, col4 = st.columns(4)
 
-    # --- GRÁFICOS ---
-    c1, c2 = st.columns([2, 1])
+with col1:
+    st.metric("Documentos Analizados", total_analizados)
+with col2:
+    st.metric("Alertas Detectadas", amenazas, delta_color="inverse")
+with col3:
+    st.metric("Capital Protegido", f"$ {capital_protegido:,.0f}".replace(",", "."))
+with col4:
+    st.metric("Confianza de Red (Lista Blanca)", f"{verificados}", "🛡️ Verificados")
 
-    with c1:
-        st.subheader("📊 Historial de Análisis")
-        # Agrupar por fecha si existe
-        if 'Fecha' in df.columns:
-            df_daily = df.groupby([df['Fecha'].dt.date, 'Veredicto']).size().reset_index(name='Cantidad')
-            fig = px.bar(df_daily, x='Fecha', y='Cantidad', color='Veredicto', barmode='group',
-                         color_discrete_map={'SEGURO': '#00CC96', 'VERIFICAR': '#EF553B', 'RIESGOSO': '#EF553B'})
-            st.plotly_chart(fig, use_container_width=True)
+st.markdown("---")
 
-    with c2:
-        st.subheader("🛡️ Estado de Riesgo")
-        fig_pie = px.pie(df, names='Veredicto', hole=0.4,
-                         color='Veredicto',
-                         color_discrete_map={'SEGURO': '#00CC96', 'VERIFICAR': '#EF553B', 'RIESGOSO': '#EF553B'})
-        st.plotly_chart(fig_pie, use_container_width=True)
+# --- 5. GRÁFICOS Y ANÁLISIS ---
+col_left, col_right = st.columns([2, 1])
 
-    # --- TABLA DETALLADA ---
-    st.subheader("📋 Registro Detallado")
-    st.dataframe(df.sort_values(by='Fecha', ascending=False) if 'Fecha' in df.columns else df, use_container_width=True)
+with col_left:
+    st.subheader("📊 Historial de Amenazas por Fecha")
+    # Agrupar por fecha para el gráfico
+    df['Fecha_dt'] = pd.to_datetime(df['Fecha']).dt.date
+    chart_data = df.groupby(['Fecha_dt', 'Veredicto']).size().reset_index(name='Cantidad')
+    fig_line = px.line(chart_data, x='Fecha_dt', y='Cantidad', color='Veredicto',
+                       markers=True, color_discrete_map={
+                           'VERIFICADO': '#2ecc71',
+                           'RIESGOSO': '#f1c40f',
+                           'FRAUDE': '#e74c3c'
+                       })
+    st.plotly_chart(fig_line, use_container_width=True)
 
+with col_right:
+    st.subheader("🎯 Estado de Riesgo")
+    fig_pie = px.pie(df, names='Veredicto', hole=0.6,
+                     color='Veredicto',
+                     color_discrete_map={
+                           'VERIFICADO': '#2ecc71',
+                           'RIESGOSO': '#f1c40f',
+                           'FRAUDE': '#e74c3c'
+                     })
+    st.plotly_chart(fig_pie, use_container_width=True)
 
+# --- 6. REGISTRO DETALLADO (AUDITORÍA FORENSE) ---
+st.subheader("📋 Auditoría Forense en Tiempo Real")
 
-# Al final de tu archivo (fuera de cualquier función)
-st_autorefresh(interval=60000, key="datarefresh")
+# Aplicar estilos de color a la tabla
+def highlight_veredicto(val):
+    color = 'white'
+    if val == 'FRAUDE': color = '#ff4b4b'
+    elif val == 'RIESGOSO': color = '#ffa500'
+    elif val == 'VERIFICADO': color = '#28a745'
+    return f'background-color: {color}; color: white; font-weight: bold'
+
+st.dataframe(
+    df[['Fecha', 'Emisor', 'Monto', 'Veredicto', 'Confianza', 'Analisis']]
+    .sort_index(ascending=False)
+    .style.applymap(highlight_veredicto, subset=['Veredicto']),
+    use_container_width=True
+)
+
+st.markdown("---")
+st.caption("🛡️ Escudo Pyme v2.0 | Sistema de Vigilancia Activa conforme a la Ley Marco de Ciberseguridad.")
